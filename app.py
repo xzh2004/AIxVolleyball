@@ -12,6 +12,7 @@ from scorer import VolleyballScorer
 from video_processor import VideoProcessor
 from sequence_analyzer import SequenceAnalyzer
 from trajectory_visualizer import TrajectoryVisualizer
+from video_generator import VideoGenerator
 
 
 # 页面配置
@@ -381,14 +382,14 @@ def display_results(original_frame, annotated_frame, score_result, scorer):
         st.image(
             cv2.cvtColor(original_frame, cv2.COLOR_BGR2RGB),
             caption="原始画面",
-            use_column_width=True
+            use_container_width=True
         )
     
     with col2:
         st.image(
             cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB),
             caption="姿态识别（骨架叠加）",
-            use_column_width=True
+            use_container_width=True
         )
     
     # 反馈建议
@@ -561,28 +562,204 @@ def display_sequence_results(frames, sequence_result, pose_score, sequence_summa
         st.image(
             cv2.cvtColor(best_frame, cv2.COLOR_BGR2RGB),
             caption=f"原始画面（第 {best_idx + 1} 帧）",
-            use_column_width=True
+            use_container_width=True
         )
     with col2:
         st.image(
             cv2.cvtColor(best_annotated, cv2.COLOR_BGR2RGB),
             caption="姿态识别（骨架叠加）",
-            use_column_width=True
+            use_container_width=True
         )
     
-    # 轨迹可视化
-    st.subheader("🎯 动作轨迹分析")
+    # 动态视频展示
+    st.subheader("🎬 动态视频分析")
+    
+    # 初始化session_state存储视频缓存
+    if 'video_cache' not in st.session_state:
+        st.session_state.video_cache = {}
+    
+    # 为当前分析结果生成唯一ID（基于帧数和最佳帧索引）
+    cache_key = f"{len(frames)}_{sequence_result['best_frame_idx']}"
+    
+    # 添加"生成全部视频"按钮
+    col1, col2, col3 = st.columns([2, 1, 1])
+    with col1:
+        st.write("### 📹 视频可视化")
+    with col2:
+        if st.button("🎬 生成全部视频", help="一次性生成所有4种视频（需要20-30秒）"):
+            with st.spinner("⏳ 正在生成全部视频，请稍候..."):
+                video_gen = VideoGenerator()
+                progress_bar = st.progress(0)
+                
+                # 生成骨架叠加视频
+                st.text("1/4 生成骨架叠加视频...")
+                cache_video_key = f"{cache_key}_overlay"
+                if cache_video_key not in st.session_state.video_cache:
+                    video_path = video_gen.create_overlay_video(frames, sequence_result)
+                    st.session_state.video_cache[cache_video_key] = video_path
+                progress_bar.progress(25)
+                
+                # 生成纯骨架动画
+                st.text("2/4 生成纯骨架动画...")
+                cache_video_key = f"{cache_key}_skeleton"
+                if cache_video_key not in st.session_state.video_cache:
+                    video_path = video_gen.create_skeleton_video(sequence_result)
+                    st.session_state.video_cache[cache_video_key] = video_path
+                progress_bar.progress(50)
+                
+                # 生成左右对比视频
+                st.text("3/4 生成左右对比视频...")
+                cache_video_key = f"{cache_key}_comparison"
+                if cache_video_key not in st.session_state.video_cache:
+                    video_path = video_gen.create_side_by_side_video(frames, sequence_result)
+                    st.session_state.video_cache[cache_video_key] = video_path
+                progress_bar.progress(75)
+                
+                # 生成轨迹追踪视频
+                st.text("4/4 生成轨迹追踪视频...")
+                cache_video_key = f"{cache_key}_trajectory"
+                if cache_video_key not in st.session_state.video_cache:
+                    video_path = video_gen.create_trajectory_video(frames, sequence_result)
+                    st.session_state.video_cache[cache_video_key] = video_path
+                progress_bar.progress(100)
+                
+                st.success("✅ 全部视频生成完成！可以在下方切换查看。")
+                st.balloons()
+    
+    with col3:
+        # 显示已生成的视频列表
+        if st.button("📁 查看文件夹", help="打开output文件夹查看所有已生成的视频"):
+            output_dir = 'output'
+            if os.path.exists(output_dir):
+                video_files = [f for f in os.listdir(output_dir) if f.endswith('.mp4')]
+                if video_files:
+                    st.info(f"📂 已生成 {len(video_files)} 个视频文件")
+                    with st.expander("点击查看文件列表"):
+                        for i, video_file in enumerate(video_files, 1):
+                            file_path = os.path.join(output_dir, video_file)
+                            file_size = os.path.getsize(file_path) / 1024  # KB
+                            st.text(f"{i}. {video_file} ({file_size:.1f} KB)")
+                        st.success(f"💡 文件位置: {os.path.abspath(output_dir)}")
+                else:
+                    st.warning("📂 output 文件夹为空，尚未生成任何视频")
+            else:
+                st.warning("📂 output 文件夹不存在")
+    
+    # 视频生成选项
+    video_option = st.radio(
+        "选择视频展示方式：",
+        ['骨架叠加视频', '纯骨架动画', '左右对比视频', '轨迹追踪视频', '静态轨迹图'],
+        horizontal=True,
+        help="💡 提示：可以点击上方「生成全部视频」按钮一次性生成所有视频，或直接切换选项按需生成",
+        key=f"video_option_{cache_key}"  # 使用唯一key避免冲突
+    )
     
     try:
-        # 创建轨迹图
-        trajectory_plot = visualizer.create_trajectory_plot(
-            sequence_result['trajectories'],
-            frames[0].shape[1],
-            frames[0].shape[0]
-        )
-        st.image(trajectory_plot, caption="关键点运动轨迹", use_column_width=True)
+        video_gen = VideoGenerator()
+        
+        if video_option == '骨架叠加视频':
+            # 检查缓存
+            cache_video_key = f"{cache_key}_overlay"
+            if cache_video_key not in st.session_state.video_cache:
+                st.info("🎥 生成中：将骨架叠加在原视频上...")
+                video_path = video_gen.create_overlay_video(frames, sequence_result)
+                st.session_state.video_cache[cache_video_key] = video_path
+            else:
+                video_path = st.session_state.video_cache[cache_video_key]
+            
+            # 直接使用文件路径
+            st.video(video_path)
+            st.success(f"✅ 骨架叠加视频已生成！文件位置: {video_path}")
+            
+            # 提供下载按钮
+            with open(video_path, 'rb') as f:
+                st.download_button(
+                    label="📥 下载视频",
+                    data=f.read(),
+                    file_name="volleyball_overlay.mp4",
+                    mime="video/mp4"
+                )
+            
+        elif video_option == '纯骨架动画':
+            cache_video_key = f"{cache_key}_skeleton"
+            if cache_video_key not in st.session_state.video_cache:
+                st.info("🎥 生成中：创建纯骨架动画（白色背景）...")
+                video_path = video_gen.create_skeleton_video(sequence_result)
+                st.session_state.video_cache[cache_video_key] = video_path
+            else:
+                video_path = st.session_state.video_cache[cache_video_key]
+            
+            # 直接使用文件路径
+            st.video(video_path)
+            st.success(f"✅ 纯骨架动画已生成！文件位置: {video_path}")
+            
+            # 提供下载按钮
+            with open(video_path, 'rb') as f:
+                st.download_button(
+                    label="📥 下载视频",
+                    data=f.read(),
+                    file_name="volleyball_skeleton.mp4",
+                    mime="video/mp4"
+                )
+            
+        elif video_option == '左右对比视频':
+            cache_video_key = f"{cache_key}_comparison"
+            if cache_video_key not in st.session_state.video_cache:
+                st.info("🎥 生成中：创建左右对比视频...")
+                video_path = video_gen.create_side_by_side_video(frames, sequence_result)
+                st.session_state.video_cache[cache_video_key] = video_path
+            else:
+                video_path = st.session_state.video_cache[cache_video_key]
+            
+            # 直接使用文件路径
+            st.video(video_path)
+            st.success(f"✅ 左右对比视频已生成！文件位置: {video_path}")
+            
+            # 提供下载按钮
+            with open(video_path, 'rb') as f:
+                st.download_button(
+                    label="📥 下载视频",
+                    data=f.read(),
+                    file_name="volleyball_comparison.mp4",
+                    mime="video/mp4"
+                )
+            
+        elif video_option == '轨迹追踪视频':
+            cache_video_key = f"{cache_key}_trajectory"
+            if cache_video_key not in st.session_state.video_cache:
+                st.info("🎥 生成中：创建运动轨迹视频...")
+                video_path = video_gen.create_trajectory_video(frames, sequence_result)
+                st.session_state.video_cache[cache_video_key] = video_path
+            else:
+                video_path = st.session_state.video_cache[cache_video_key]
+            
+            # 直接使用文件路径
+            st.video(video_path)
+            st.success(f"✅ 轨迹追踪视频已生成！文件位置: {video_path}")
+            
+            # 提供下载按钮
+            with open(video_path, 'rb') as f:
+                st.download_button(
+                    label="📥 下载视频",
+                    data=f.read(),
+                    file_name="volleyball_trajectory.mp4",
+                    mime="video/mp4"
+                )
+            
+        else:  # 静态轨迹图
+            trajectory_plot = visualizer.create_trajectory_plot(
+                sequence_result['trajectories'],
+                frames[0].shape[1],
+                frames[0].shape[0]
+            )
+            st.image(trajectory_plot, caption="关键点运动轨迹", use_container_width=True)
+            st.info("💡 提示：试试上面的动态视频选项，效果更直观！")
+            
     except Exception as e:
-        st.warning(f"轨迹可视化失败: {str(e)}")
+        st.error(f"❌ 视频生成失败: {str(e)}")
+        st.error("详细错误信息：")
+        st.exception(e)
+        st.warning("💡 提示：请检查视频格式和帧数是否正确")
     
     # 角度时间轴
     st.subheader("📈 角度变化分析")
@@ -593,14 +770,14 @@ def display_sequence_results(frames, sequence_result, pose_score, sequence_summa
         try:
             all_landmarks = [f['landmarks'] for f in sequence_result['frames_data']]
             arm_timeline = visualizer.create_angle_timeline(all_landmarks, 'arm')
-            st.image(arm_timeline, caption="手臂角度时间轴", use_column_width=True)
+            st.image(arm_timeline, caption="手臂角度时间轴", use_container_width=True)
         except Exception as e:
             st.warning(f"手臂角度分析失败: {str(e)}")
     
     with col2:
         try:
             knee_timeline = visualizer.create_angle_timeline(all_landmarks, 'knee')
-            st.image(knee_timeline, caption="膝盖角度时间轴", use_column_width=True)
+            st.image(knee_timeline, caption="膝盖角度时间轴", use_container_width=True)
         except Exception as e:
             st.warning(f"膝盖角度分析失败: {str(e)}")
     
