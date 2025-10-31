@@ -1,0 +1,9 @@
+{
+  "arm_angle": 165,
+  "arm_gap_angle": 25,
+  "knee_angle": 75,
+  "hip_height": 0.55,
+  "arm_height": 0.45,
+  "description": "标准排球垫球姿态模板"
+}
+
