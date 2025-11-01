@@ -62,6 +62,24 @@ def render_practice_selector():
         }
     }
     
+    # 特殊功能（战术学习等）
+    special_features = {
+        'tactics_quiz': {
+            'name': '战术学习题库',
+            'icon': '📚',
+            'description': '通过智能答题系统学习排球战术知识',
+            'level': '所有等级',
+            'enabled': True
+        },
+        'video_library': {
+            'name': '训练视频库',
+            'icon': '📹',
+            'description': '观看专业运动员的训练视频',
+            'level': '所有等级',
+            'enabled': False
+        }
+    }
+    
     st.markdown("### 🛡️ 自由人训练项目")
     st.markdown("")
     
@@ -101,5 +119,43 @@ def render_practice_selector():
                 
                 st.markdown("---")
     
-    st.info("💡 提示：目前开放了垫球练习，更多练习项目正在开发中！")
+    # 添加特殊功能区域
+    st.markdown("### 🌟 附加功能")
+    st.markdown("")
+    
+    col1, col2 = st.columns(2)
+    
+    special_keys = list(special_features.keys())
+    for i, key in enumerate(special_keys):
+        feature = special_features[key]
+        
+        with col1 if i % 2 == 0 else col2:
+            with st.container():
+                if feature['enabled']:
+                    st.markdown(f"### {feature['icon']} {feature['name']}")
+                    st.markdown(f"**{feature['description']}**")
+                    st.markdown(f"📊 适合：{feature['level']}")
+                    
+                    if st.button(
+                        "进入 →", 
+                        key=f"feature_{key}",
+                        use_container_width=True,
+                        type="secondary"
+                    ):
+                        st.session_state.page = key
+                        st.rerun()
+                else:
+                    st.markdown(f"### {feature['icon']} {feature['name']} 🔒")
+                    st.markdown(f"{feature['description']}")
+                    st.markdown(f"📊 适合：{feature['level']}")
+                    st.button(
+                        "🔒 敬请期待", 
+                        key=f"feature_{key}",
+                        use_container_width=True,
+                        disabled=True
+                    )
+                
+                st.markdown("---")
+    
+    st.info("💡 提示：目前开放了垫球练习和战术学习题库，更多功能正在开发中！")
 
