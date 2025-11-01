@@ -17,14 +17,19 @@ from backend.core import (
     TrajectoryVisualizer,
     VideoGenerator
 )
+from backend.core.scorer_v2 import VolleyballScorerV2
 from config.settings import TEMPLATES_DIR, DEFAULT_TEMPLATE
 
 
 class VolleyballService:
     """排球动作识别服务类"""
     
-    def __init__(self):
-        """初始化服务"""
+    def __init__(self, use_v2_scorer=True):
+        """初始化服务
+        
+        Args:
+            use_v2_scorer: 是否使用优化版评分器（默认True）
+        """
         self.pose_detector = PoseDetector()
         self.video_processor = VideoProcessor()
         
@@ -34,10 +39,17 @@ class VolleyballService:
             # 如果不存在，使用旧路径兼容
             template_path = Path("template.json")
         
-        self.scorer = VolleyballScorer(template_path=str(template_path))
+        # 选择评分器版本
+        if use_v2_scorer:
+            self.scorer = VolleyballScorerV2(template_path=str(template_path))
+            print("✅ 使用优化版评分系统 V2")
+        else:
+            self.scorer = VolleyballScorer(template_path=str(template_path))
+        
         self.sequence_analyzer = SequenceAnalyzer()
         self.trajectory_visualizer = TrajectoryVisualizer()
         self.video_generator = VideoGenerator()
+        self.use_v2_scorer = use_v2_scorer
     
     def analyze_single_frame(self, image):
         """
@@ -137,23 +149,61 @@ class VolleyballService:
             if not analysis_result.get("success", False):
                 return analysis_result
             
-            # 获取最佳帧进行详细评分
-            best_frame_idx = analysis_result.get("best_frame_idx", 0)
+            # 获取关键点序列
             frames_data = analysis_result.get("frames_data", [])
+            landmarks_sequence = [frame.get("landmarks") for frame in frames_data if frame.get("landmarks")]
             
-            if frames_data and best_frame_idx < len(frames_data):
-                best_frame_data = frames_data[best_frame_idx]
-                landmarks = best_frame_data.get("landmarks")
+            # 如果使用V2评分器，进行序列评分
+            if self.use_v2_scorer and len(landmarks_sequence) > 0:
+                # 使用V2的序列评分功能
+                sequence_score_result = self.scorer.score_sequence(landmarks_sequence)
                 
-                if landmarks:
-                    # 对最佳帧进行评分
-                    score_result = self.scorer.score_pose(landmarks)
-                    analysis_result["score"] = score_result
+                # 获取最佳帧的分项得分
+                best_frame_idx = sequence_score_result.get('best_frame_idx', 0)
+                if best_frame_idx < len(landmarks_sequence):
+                    best_landmarks = landmarks_sequence[best_frame_idx]
+                    if best_landmarks:
+                        # 获取最佳帧的详细分项得分
+                        best_frame_detail = self.scorer.score_pose(best_landmarks)
+                        arm_score = best_frame_detail.get('arm_score', 0)
+                        body_score = best_frame_detail.get('body_score', 0)
+                        position_score = best_frame_detail.get('position_score', 0)
+                        stability_score = best_frame_detail.get('stability_score', 0)
+                    else:
+                        arm_score = body_score = position_score = stability_score = 0
+                else:
+                    arm_score = body_score = position_score = stability_score = 0
+                
+                analysis_result["score"] = {
+                    'total_score': sequence_score_result['total_score'],
+                    'arm_score': arm_score,
+                    'body_score': body_score,
+                    'position_score': position_score,
+                    'stability_score': stability_score,
+                    'feedback': sequence_score_result.get('feedback', [])
+                }
+                analysis_result["sequence_scores"] = {
+                    'smoothness': sequence_score_result.get('smoothness', 0) * 100,
+                    'completeness': sequence_score_result.get('completeness', 0) * 100,
+                    'consistency': sequence_score_result.get('best_frame_score', 0)
+                }
+            else:
+                # 使用旧版单帧评分
+                best_frame_idx = analysis_result.get("best_frame_idx", 0)
+                
+                if frames_data and best_frame_idx < len(frames_data):
+                    best_frame_data = frames_data[best_frame_idx]
+                    landmarks = best_frame_data.get("landmarks")
                     
-                    # 获取姿态图像（如果有）
-                    annotated_frames = analysis_result.get("annotated_frames", [])
-                    if annotated_frames and best_frame_idx < len(annotated_frames):
-                        analysis_result["pose_image"] = annotated_frames[best_frame_idx]
+                    if landmarks:
+                        # 对最佳帧进行评分
+                        score_result = self.scorer.score_pose(landmarks)
+                        analysis_result["score"] = score_result
+            
+            # 获取姿态图像
+            annotated_frames = analysis_result.get("annotated_frames", [])
+            if annotated_frames and best_frame_idx < len(annotated_frames):
+                analysis_result["pose_image"] = annotated_frames[best_frame_idx]
             
             # 生成轨迹可视化
             trajectories = analysis_result.get("trajectories", {})

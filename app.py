@@ -25,6 +25,8 @@ from frontend.components.video_uploader import (
     render_analysis_mode_selector,
     render_visualization_selector
 )
+from frontend.components.welcome_page import render_welcome_page
+from frontend.components.tactics_quiz import render_tactics_quiz
 
 # 导入配置
 from config.settings import STREAMLIT_CONFIG
@@ -62,16 +64,24 @@ def main():
     
     # 初始化session state
     if 'page' not in st.session_state:
-        st.session_state.page = 'position_selection'
+        st.session_state.page = 'welcome'
     
     if 'api' not in st.session_state:
         st.session_state.api = VolleyballAPI()
     
-    # 渲染用户信息栏（所有页面都显示）
+    if 'welcomed' not in st.session_state:
+        st.session_state.welcomed = False
+    
+    # 如果还没看过欢迎页面，显示欢迎页面
+    if not st.session_state.welcomed:
+        render_welcome_page()
+        return
+    
+    # 渲染用户信息栏（所有页面都显示，除了欢迎页面）
     render_user_info()
     
     # 根据当前页面渲染不同内容
-    if st.session_state.page == 'position_selection':
+    if st.session_state.page == 'home' or st.session_state.page == 'position_selection':
         render_position_selector()
     
     elif st.session_state.page == 'practice_selection':
@@ -79,6 +89,9 @@ def main():
     
     elif st.session_state.page == 'training':
         render_training_page()
+    
+    elif st.session_state.page == 'tactics_quiz':
+        render_tactics_quiz_page()
 
 
 def render_training_page():
@@ -262,6 +275,25 @@ def render_visualization_tab(api):
                             mime="video/mp4",
                             use_container_width=True
                         )
+
+
+def render_tactics_quiz_page():
+    """渲染战术学习题库页面"""
+    
+    # 返回按钮
+    col1, col2, col3 = st.columns([1, 8, 1])
+    with col1:
+        if st.button("← 返回", key="back_to_home"):
+            st.session_state.page = 'home'
+            # 清除quiz相关状态
+            for key in ["quiz_started", "current_question_idx", "selected_questions", 
+                       "user_answers", "quiz_finished", "show_explanation"]:
+                if key in st.session_state:
+                    del st.session_state[key]
+            st.rerun()
+    
+    # 渲染题库组件
+    render_tactics_quiz()
 
 
 if __name__ == "__main__":

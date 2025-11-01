@@ -60,8 +60,8 @@ def render_score_card(score_summary):
     col1, col2 = st.columns(2)
     
     with col1:
-        st.metric("手臂姿态", f"{score_summary.get('arm_score', 0):.1f}/40")
-        st.metric("触球位置", f"{score_summary.get('position_score', 0):.1f}/20")
+        st.metric("手臂姿态", f"{score_summary.get('arm_score', 0):.1f}/35")
+        st.metric("触球位置", f"{score_summary.get('position_score', 0):.1f}/25")
     
     with col2:
         st.metric("身体重心", f"{score_summary.get('body_score', 0):.1f}/30")
@@ -86,9 +86,9 @@ def render_radar_chart(score_summary):
     """
     categories = ['手臂姿态', '身体重心', '触球位置', '整体稳定']
     values = [
-        (score_summary.get('arm_score', 0) / 40) * 100,
+        (score_summary.get('arm_score', 0) / 35) * 100,
         (score_summary.get('body_score', 0) / 30) * 100,
-        (score_summary.get('position_score', 0) / 20) * 100,
+        (score_summary.get('position_score', 0) / 25) * 100,
         (score_summary.get('stability_score', 0) / 10) * 100,
     ]
     
